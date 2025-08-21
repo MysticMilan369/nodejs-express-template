@@ -1,8 +1,8 @@
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './swagger.config';
 
-import { Express } from 'express';
+import { Application } from 'express';
 
-export function swaggerSetup(app: Express) {
+export function swaggerSetup(app: Application) {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 }
