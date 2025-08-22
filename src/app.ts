@@ -5,7 +5,7 @@ import morgan from 'morgan';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import { config } from '@/config';
-import { globalErrorHandler } from '@/middleware/error-handler.middleware';
+import { globalErrorHandler, notFoundHandler } from '@/middleware/error-handler.middleware';
 import { routes } from '@/routes';
 import { swaggerSetup, swaggerSpec } from '@/lib/swagger';
 import { logger } from './lib/logger';
@@ -95,6 +95,8 @@ app.use('*', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+app.use(notFoundHandler);
 
 // Global error handler (must be last)
 app.use(globalErrorHandler);

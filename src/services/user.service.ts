@@ -7,7 +7,7 @@ import { User } from '@/models';
 import { IUser, IUserUpdate, IUserCreate, IUserPublic } from '@/models';
 import { AppError } from '@/lib/errors';
 import { HTTP_STATUS_CODES } from '@/lib/constants';
-import { IPaginationQuery, IPaginatedResponse } from '@/types/pagination.types';
+import { IPaginationQuery, IPaginatedResponse } from '@/types';
 import { PaginationService } from '@/lib/pagination';
 import { logger } from '@/lib/logger';
 import { config } from '@/config';

@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { HTTP_STATUS_CODES } from '@/lib/constants';
+import { env } from '@/config/environment.config';
 
 export interface ApiResponseData {
   success: boolean;
@@ -8,6 +9,7 @@ export interface ApiResponseData {
   error?: unknown;
   timestamp: string;
   statusCode: number;
+  stack?: string | undefined;
 }
 
 export class ApiResponse {
@@ -39,6 +41,7 @@ export class ApiResponse {
     message: string = 'Something went wrong',
     statusCode: number = HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR,
     error: unknown = null,
+    stack?: string,
   ): void {
     const response: ApiResponseData = {
       success: false,
@@ -46,6 +49,7 @@ export class ApiResponse {
       error,
       timestamp: new Date().toISOString(),
       statusCode,
+      ...(env.NODE_ENV === 'development' && stack && { stack }),
     };
 
     res.status(statusCode).json(response);
@@ -122,36 +126,48 @@ export class ApiResponse {
   /**
    * Send unauthorized response
    */
-  static unauthorized(res: Response, message: string = 'Unauthorized access'): void {
-    this.error(res, message, HTTP_STATUS_CODES.UNAUTHORIZED);
+  static unauthorized(
+    res: Response,
+    message: string = 'Unauthorized access',
+    stack?: string,
+  ): void {
+    this.error(res, message, HTTP_STATUS_CODES.UNAUTHORIZED, null, stack);
   }
 
   /**
    * Send forbidden response
    */
-  static forbidden(res: Response, message: string = 'Access forbidden'): void {
-    this.error(res, message, HTTP_STATUS_CODES.FORBIDDEN);
+  static forbidden(res: Response, message: string = 'Access forbidden', stack?: string): void {
+    this.error(res, message, HTTP_STATUS_CODES.FORBIDDEN, null, stack);
   }
 
   /**
    * Send not found response
    */
-  static notFound(res: Response, message: string = 'Resource not found'): void {
-    this.error(res, message, HTTP_STATUS_CODES.NOT_FOUND);
+  static notFound(res: Response, message: string = 'Resource not found', stack?: string): void {
+    this.error(res, message, HTTP_STATUS_CODES.NOT_FOUND, null, stack);
   }
 
   /**
    * Send conflict response
    */
-  static conflict(res: Response, message: string = 'Resource already exists'): void {
-    this.error(res, message, HTTP_STATUS_CODES.CONFLICT);
+  static conflict(
+    res: Response,
+    message: string = 'Resource already exists',
+    stack?: string,
+  ): void {
+    this.error(res, message, HTTP_STATUS_CODES.CONFLICT, null, stack);
   }
 
   /**
    * Send too many requests response
    */
-  static tooManyRequests(res: Response, message: string = 'Too many requests'): void {
-    this.error(res, message, HTTP_STATUS_CODES.TOO_MANY_REQUESTS);
+  static tooManyRequests(
+    res: Response,
+    message: string = 'Too many requests',
+    stack?: string,
+  ): void {
+    this.error(res, message, HTTP_STATUS_CODES.TOO_MANY_REQUESTS, null, stack);
   }
 
   /**
@@ -161,7 +177,8 @@ export class ApiResponse {
     res: Response,
     message: string = 'Internal server error',
     error: unknown = null,
+    stack?: string,
   ): void {
-    this.error(res, message, HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR, error);
+    this.error(res, message, HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR, error, stack);
   }
 }

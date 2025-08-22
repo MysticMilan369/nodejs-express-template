@@ -1,5 +1,5 @@
 import { FilterQuery, Model } from 'mongoose';
-import { IPaginationOptions, IPaginatedResponse } from '../../types/pagination.types';
+import { IPaginationOptions, IPaginatedResponse } from '@/types';
 
 export class PaginationService {
   /**

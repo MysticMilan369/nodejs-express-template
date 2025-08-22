@@ -11,6 +11,9 @@ export class ValidationMiddleware {
    * Validate request body, query, or params against a Zod schema
    * @param schema The Zod schema to validate against
    * @param type The part of the request to validate ('body', 'query', or 'params')
+   *
+   * Purpose: Validates a single part of the request (body OR query OR params)
+   * Example: ValidationMiddleware.validate(userCreateSchema, 'body')
    */
   static validate(schema: ZodType<unknown>, type: 'body' | 'query' | 'params' = 'body') {
     return async (req: Request, res: Response, next: NextFunction) => {
@@ -32,14 +35,21 @@ export class ValidationMiddleware {
 
         next();
       } catch (error) {
-        // Handle validation errors
+        // Handle validation errors - format to match global error handler expectations
         if (error instanceof ZodError) {
-          const validationErrors = error.issues.map((issue) => ({
+          // Format details as array of {path, message} objects
+          const validationDetails = error.issues.map((issue) => ({
             path: issue.path.join('.'),
             message: issue.message,
           }));
 
-          return next(new ValidationError('Validation failed', validationErrors));
+          // Create combined message for consistency
+          const messages = validationDetails.map((detail) => detail.message);
+          const combinedMessage = messages.join(', ');
+
+          return next(
+            new ValidationError(`Validation failed: ${combinedMessage}`, validationDetails),
+          );
         }
 
         next(error);
@@ -50,6 +60,13 @@ export class ValidationMiddleware {
   /**
    * Validate complete request (body, query, and params) against a Zod schema
    * @param schema The Zod schema with body, query, and params properties
+   *
+   * Purpose: Validates multiple parts of the request simultaneously
+   * Example: ValidationMiddleware.validateRequest(z.object({
+   *   body: userCreateSchema,
+   *   params: z.object({ id: z.string() }),
+   *   query: z.object({ page: z.string().optional() })
+   * }))
    */
   static validateRequest(schema: ZodType<unknown>) {
     return async (req: Request, res: Response, next: NextFunction) => {
@@ -73,14 +90,21 @@ export class ValidationMiddleware {
 
         next();
       } catch (error) {
-        // Handle validation errors
+        // Handle validation errors - format to match global error handler expectations
         if (error instanceof ZodError) {
-          const validationErrors = error.issues.map((issue) => ({
+          // Format details as array of {path, message} objects
+          const validationDetails = error.issues.map((issue) => ({
             path: issue.path.join('.'),
             message: issue.message,
           }));
 
-          return next(new ValidationError('Validation failed', validationErrors));
+          // Create combined message for consistency
+          const messages = validationDetails.map((detail) => detail.message);
+          const combinedMessage = messages.join(', ');
+
+          return next(
+            new ValidationError(`Validation failed: ${combinedMessage}`, validationDetails),
+          );
         }
 
         next(error);

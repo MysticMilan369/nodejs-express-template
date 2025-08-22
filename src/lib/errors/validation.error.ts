@@ -7,14 +7,12 @@ export interface ValidationErrorDetail {
 }
 
 export class ValidationError extends AppError {
-  details: ValidationErrorDetail[];
-  statusCode: number;
+  public readonly details: ValidationErrorDetail[];
 
-  constructor(message: string, details: ValidationErrorDetail[]) {
+  constructor(message: string, details: ValidationErrorDetail[] = []) {
     super(message, HTTP_STATUS_CODES.BAD_REQUEST);
     this.name = 'ValidationError';
     this.details = details;
-    this.statusCode = HTTP_STATUS_CODES.BAD_REQUEST;
   }
 
   toJSON() {
@@ -28,3 +26,10 @@ export class ValidationError extends AppError {
     };
   }
 }
+
+export const createValidationError = (
+  message: string,
+  errors: ValidationErrorDetail[] = [],
+): ValidationError => {
+  return new ValidationError(message, errors);
+};
