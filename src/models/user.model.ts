@@ -59,7 +59,7 @@ const UserSchema = new Schema<IUser>(
     passwordHash: {
       type: String,
       required: [true, 'Password is required'],
-      minlength: 6,
+      minlength: 8,
     },
     role: {
       type: String,
