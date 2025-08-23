@@ -19,8 +19,7 @@
   "lint-staged": {
     "*.ts": [
       "pnpm lint:fix",
-      "pnpm format",
-      "git add"
+      "pnpm format"
     ]
   },
   "keywords": [],
