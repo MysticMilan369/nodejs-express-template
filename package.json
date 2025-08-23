@@ -2,17 +2,19 @@
   "name": "chat-backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "prepare": "husky",
     "dev": "nodemon",
-    "debug": "nodemon --exec ts-node -r tsconfig-paths/register src/server.debug.ts",
+    "prebuild": "pnpm run clean",
     "build": " pnpm lint:fix && pnpm format && tsc && tsc-alias",
     "start": "node dist/server.js",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
-    "format": "prettier --write src/**/*.ts"
+    "format": "prettier --write src/**/*.ts",
+    "format:check": "prettier --check src/**/*.ts",
+    "clean": "rimraf dist"
   },
   "lint-staged": {
     "*.ts": [
