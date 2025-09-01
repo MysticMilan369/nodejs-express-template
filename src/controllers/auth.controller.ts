@@ -191,4 +191,66 @@ export class AuthController {
       'User is authenticated',
     );
   });
+
+  /**
+   * @desc    Verify user email
+   * @route   Post /api/auth/verify-email
+   * @access  Private
+   */
+  static verifyEmail = asyncHandler(async (req: Request, res: Response) => {
+    const result = await AuthService.verifyEmail(req.body.token);
+
+    ApiResponse.success(res, null, result.message || 'Email verified successfully');
+  });
+
+  /**
+   * @desc    Resend email verification link
+   * @route   POST /api/auth/resend-verification
+   * @access  Public
+   */
+  static resendVerification = asyncHandler(async (req: Request, res: Response) => {
+    const result = await AuthService.resendVerification(req.body.email);
+
+    ApiResponse.success(res, null, result.message || 'Verification email sent successfully');
+  });
+
+  /**
+   * @desc   Verify password reset token
+   * @route  GET /api/auth/verify-reset-token
+   * @access Public
+   */
+
+  static verifyResetToken = asyncHandler(async (req: Request, res: Response) => {
+    const { token } = req.params as { token: string };
+
+    const user = await AuthService.verifyResetToken(token);
+
+    if (!user) {
+      return ApiResponse.error(res, 'Invalid or expired reset token', HTTP_STATUS_CODES.NOT_FOUND);
+    }
+
+    ApiResponse.success(res, { user }, 'Reset token verified successfully');
+  });
+
+  /**
+   * @desc    Request password reset (Forgot password)
+   * @route   POST /api/auth/forgot-password
+   * @access  Public
+   */
+  static forgotPassword = asyncHandler(async (req: Request, res: Response) => {
+    const result = await AuthService.forgotPassword(req.body.email);
+
+    ApiResponse.success(res, null, result.message || 'Password reset email sent successfully');
+  });
+
+  /**
+   * @desc    Reset user password
+   * @route   POST /api/auth/reset-password
+   * @access  Public
+   */
+  static resetPassword = asyncHandler(async (req: Request, res: Response) => {
+    const result = await AuthService.resetPassword(req.body);
+
+    ApiResponse.success(res, null, result.message || 'Password reset successfully');
+  });
 }

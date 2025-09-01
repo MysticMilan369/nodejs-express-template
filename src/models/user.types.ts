@@ -29,12 +29,28 @@ export interface IUser extends Document {
   onboardingCompleted: boolean;
   oauthProviders?: IOAuthProvider[];
   refreshTokens?: IRefreshToken[];
+  resetToken?: string | null;
+  resetTokenExpiry?: Date | null;
+  emailVerificationToken?: string | null;
+  emailVerificationExpiry?: Date | null;
   createdAt: Date;
   updatedAt: Date;
   __v: number;
 
   // Instance methods
-  toPublicJSON(): Omit<Omit<IUser, 'passwordHash' | 'refreshTokens' | '__v'>, '_id' | 'id'> & {
+  toPublicJSON(): Omit<
+    Omit<
+      IUser,
+      | 'passwordHash'
+      | 'refreshTokens'
+      | 'emailVerificationToken'
+      | 'emailVerificationExpiry'
+      | 'resetToken'
+      | 'resetTokenExpiry'
+      | '__v'
+    >,
+    '_id' | 'id'
+  > & {
     _id: string;
     id: string;
   };
@@ -76,8 +92,13 @@ export interface IUserChangePassword {
   confirmPassword: string;
 }
 
+export interface IResetPasswordRequest {
+  token: string;
+  password: string;
+  confirmPassword: string;
+}
+
 export interface IUserPublic {
-  _id: string;
   id: string;
   name: string;
   username: string;

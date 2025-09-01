@@ -244,4 +244,165 @@ router.put(
  */
 router.get('/verify', AuthMiddleware.authenticate, AuthController.verifyAuth);
 
+/**
+ * @swagger
+ * /api/auth/resend-verification:
+ *   post:
+ *     summary: Resend email verification link
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: User's email address
+ *     responses:
+ *       200:
+ *         description: Verification email sent successfully
+ *       400:
+ *         description: User not found with this email or already verified
+ *       500:
+ *         description: Failed to send verification email
+ */
+router.post(
+  '/resend-verification',
+  ValidationMiddleware.validate(AuthValidators.resendVerification),
+  AuthController.resendVerification,
+);
+
+/**
+ * @swagger
+ * /api/auth/verify-reset-token/{token}:
+ *   get:
+ *     summary: Verify password reset token
+ *     tags: [Authentication]
+ *     parameters:
+ *       - in: path
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Password reset token to verify
+ *     responses:
+ *       200:
+ *         description: Reset token verified successfully
+ *       400:
+ *         description: Invalid or expired reset token
+ */
+router.get(
+  '/verify-reset-token/:token',
+  ValidationMiddleware.validate(AuthValidators.verifyToken, 'params'),
+  AuthController.verifyResetToken,
+);
+
+/**
+ * @swagger
+ * /api/auth/verify-email:
+ *   post:
+ *     summary: Verify user email
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Verification token
+ *     responses:
+ *       200:
+ *         description: Email verified successfully
+ *       400:
+ *         description: Invalid or expired verification token
+ */
+router.post(
+  '/verify-email',
+  ValidationMiddleware.validate(AuthValidators.verifyToken),
+  AuthController.verifyEmail,
+);
+
+/**
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Send password reset email
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: User's email address
+ *     responses:
+ *       200:
+ *         description: Password reset email sent successfully
+ *       400:
+ *         description: User not found with this email
+ *       500:
+ *         description: Failed to send password reset email
+ */
+router.post(
+  '/forgot-password',
+  ValidationMiddleware.validate(AuthValidators.forgotPassword),
+  AuthController.forgotPassword,
+);
+
+/**
+ * @swagger
+ * /api/auth/reset-password:
+ *   post:
+ *     summary: Reset user password
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *               - newPassword
+ *               - confirmPassword
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Password reset token
+ *               newPassword:
+ *                 type: string
+ *                 minLength: 8
+ *                 description: New password
+ *               confirmPassword:
+ *                 type: string
+ *                 minLength: 8
+ *                 description: Confirm new password
+ *     responses:
+ *       200:
+ *         description: Password reset successfully
+ *       400:
+ *         description: Invalid or expired reset token
+ */
+router.post(
+  '/reset-password',
+  ValidationMiddleware.validate(AuthValidators.resetPassword),
+  AuthController.resetPassword,
+);
+
 export { router as authRoutes };

@@ -1,5 +1,4 @@
-import bcrypt from 'bcryptjs';
-import { User } from '@/models';
+import { IResetPasswordRequest, User } from '@/models';
 import {
   IUser,
   IUserCreate,
@@ -14,7 +13,15 @@ import { AppError } from '@/lib/errors';
 import { HTTP_STATUS_CODES } from '@/lib/constants';
 import dayjs from 'dayjs';
 import { logger } from '@/lib/logger';
-import { config } from '@/config';
+import {
+  hashPassword,
+  comparePassword,
+  hashToken,
+  generatePasswordResetToken,
+} from '@/utils/crypto.utils';
+import { generateVerificationToken } from '@/utils/crypto.utils';
+import { emailService } from '@/lib/email/email.service';
+import { UrlConfig } from '@/config/url.config';
 
 export class AuthService {
   static async register(userData: IUserCreate): Promise<IAuthResponse> {
@@ -35,8 +42,9 @@ export class AuthService {
       }
 
       // Hash password
-      const saltRounds = parseInt(config.security.bcryptSaltRounds.toString());
-      const passwordHash = await bcrypt.hash(userData.password, saltRounds);
+      const passwordHash = await hashPassword(userData.password);
+
+      const { token, hashedToken, expiresAt } = generateVerificationToken();
 
       // Create user
       const user = new User({
@@ -47,20 +55,39 @@ export class AuthService {
         emailVerified: userData.emailVerified || false,
         isActive: userData.isActive !== undefined ? userData.isActive : true,
         onboardingCompleted: userData.onboardingCompleted || false,
+        emailVerificationToken: hashedToken,
+        emailVerificationExpiry: expiresAt,
       });
 
       await user.save();
 
+      const emailSent = await emailService.sendVerificationEmail(
+        user.email,
+        UrlConfig.getVerificationUrl(token),
+      );
+
       // Generate tokens
       const tokens = await this.generateTokens(user);
 
-      logger.info(`New user registered: ${user.email}`, { userId: user._id });
-
-      return {
-        user: user.toPublicJSON() as IUserPublic,
-        tokens,
-        message: 'User registered successfully',
-      };
+      if (emailSent) {
+        logger.info(`New user registered and verification email sent: ${user.email}`, {
+          userId: user._id,
+        });
+        return {
+          user: user.toPublicJSON() as IUserPublic,
+          tokens,
+          message: 'User registered successfully. Verification email sent.',
+        };
+      } else {
+        logger.warn(`User registered but verification email failed: ${user.email}`, {
+          userId: user._id,
+        });
+        return {
+          user: user.toPublicJSON() as IUserPublic,
+          tokens,
+          message: 'User registered successfully, but verification email could not be sent.',
+        };
+      }
     } catch (error) {
       logger.error('Registration error:', error);
       throw error;
@@ -80,6 +107,10 @@ export class AuthService {
         throw new AppError('Invalid credentials', HTTP_STATUS_CODES.UNAUTHORIZED);
       }
 
+      if (!user.emailVerified) {
+        throw new AppError('Email not verified', HTTP_STATUS_CODES.FORBIDDEN);
+      }
+
       // Check if user is active
       if (!user.isActive) {
         throw new AppError(
@@ -97,7 +128,7 @@ export class AuthService {
       }
 
       // Verify password
-      const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+      const isPasswordValid = await comparePassword(password, user.passwordHash);
       if (!isPasswordValid) {
         throw new AppError('Invalid credentials', HTTP_STATUS_CODES.UNAUTHORIZED);
       }
@@ -186,16 +217,7 @@ export class AuthService {
     passwordData: IUserChangePassword,
   ): Promise<{ message: string }> {
     try {
-      const { currentPassword, newPassword, confirmPassword } = passwordData;
-
-      // Validate new password confirmation
-      if (newPassword !== confirmPassword) {
-        throw new AppError(
-          'New password and confirmation do not match',
-          HTTP_STATUS_CODES.BAD_REQUEST,
-        );
-      }
-
+      const { currentPassword, newPassword } = passwordData;
       // Find user
       const user = await User.findById(userId);
       if (!user) {
@@ -203,14 +225,13 @@ export class AuthService {
       }
 
       // Verify current password
-      const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+      const isCurrentPasswordValid = await comparePassword(currentPassword, user.passwordHash);
       if (!isCurrentPasswordValid) {
         throw new AppError('Current password is incorrect', HTTP_STATUS_CODES.UNAUTHORIZED);
       }
 
       // Hash new password
-      const saltRounds = parseInt(config.security.bcryptSaltRounds.toString());
-      const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
+      const newPasswordHash = await hashPassword(newPassword);
 
       // Update password
       user.passwordHash = newPasswordHash;
@@ -241,6 +262,156 @@ export class AuthService {
       return user.toPublicJSON() as IUserPublic;
     } catch (error) {
       logger.error('Get profile error:', error);
+      throw error;
+    }
+  }
+
+  static async verifyEmail(token: string): Promise<{ message: string }> {
+    try {
+      const hashedToken = hashToken(token);
+
+      const user = await User.findOne({
+        emailVerificationToken: hashedToken,
+        emailVerificationExpiry: { $gt: new Date() },
+      });
+
+      if (!user) {
+        throw new AppError(
+          'Invalid or expired verification token. Please request a new verification email.',
+          HTTP_STATUS_CODES.NOT_FOUND,
+        );
+      }
+
+      user.emailVerified = true;
+      user.emailVerificationExpiry = null;
+      user.emailVerificationToken = null;
+      await user.save();
+
+      logger.info(`Email verified for user: ${user.email}`, {
+        userId: user._id,
+      });
+
+      return { message: 'Email verified successfully' };
+    } catch (error) {
+      logger.error('Email verification error:', error);
+      throw error;
+    }
+  }
+
+  static async verifyResetToken(token: string): Promise<IUserPublic> {
+    try {
+      const hashedToken = hashToken(token);
+
+      const user = await User.findOne({
+        resetToken: hashedToken,
+        resetTokenExpiry: { $gt: new Date() },
+      });
+
+      if (!user) {
+        throw new AppError('Invalid or expired reset token', HTTP_STATUS_CODES.NOT_FOUND);
+      }
+
+      return user.toPublicJSON() as IUserPublic;
+    } catch (error) {
+      logger.error('Verify reset token error:', error);
+      throw error;
+    }
+  }
+
+  static async resendVerification(email: string): Promise<{ message: string }> {
+    try {
+      const user = await User.findOne({ email: email.toLowerCase() });
+
+      if (!user) {
+        throw new AppError('User not found with this email.', HTTP_STATUS_CODES.NOT_FOUND);
+      }
+
+      if (user.emailVerified) {
+        throw new AppError('Email is already verified.', HTTP_STATUS_CODES.BAD_REQUEST);
+      }
+
+      const { token, hashedToken, expiresAt } = generateVerificationToken();
+      user.emailVerificationToken = hashedToken;
+      user.emailVerificationExpiry = expiresAt;
+      await user.save();
+
+      const emailSent = await emailService.sendVerificationEmail(
+        email,
+        UrlConfig.getVerificationUrl(token),
+      );
+
+      if (!emailSent) {
+        throw new AppError(
+          'Failed to send verification email.',
+          HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      return { message: 'Verification email resent successfully.' };
+    } catch (error) {
+      logger.error('Resend verification error:', error);
+      throw error;
+    }
+  }
+
+  static async forgotPassword(email: string): Promise<{ message: string }> {
+    try {
+      const user = await User.findOne({ email: email.toLowerCase() });
+      if (!user) {
+        throw new AppError('User not found with this email.', HTTP_STATUS_CODES.NOT_FOUND);
+      }
+
+      const { token, hashedToken, expiresAt } = generatePasswordResetToken();
+      user.resetToken = hashedToken;
+      user.resetTokenExpiry = expiresAt;
+      await user.save();
+
+      const emailSent = await emailService.sendPasswordResetEmail(
+        email,
+        UrlConfig.getPasswordResetUrl(token),
+      );
+
+      if (!emailSent) {
+        throw new AppError(
+          'Failed to send password reset email.',
+          HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR,
+        );
+      }
+      return { message: 'Password reset email sent successfully.' };
+    } catch (error) {
+      logger.error('Forgot password error:', error);
+      throw error;
+    }
+  }
+
+  static async resetPassword(
+    resetPasswordData: IResetPasswordRequest,
+  ): Promise<{ message: string }> {
+    try {
+      const { token, password } = resetPasswordData;
+
+      const hashedToken = hashToken(token);
+
+      const user = await User.findOne({
+        resetToken: hashedToken,
+        resetTokenExpiry: { $gt: new Date() },
+      });
+      if (!user) {
+        throw new AppError('Invalid or expired reset token', HTTP_STATUS_CODES.NOT_FOUND);
+      }
+
+      user.passwordHash = await hashPassword(password);
+      user.resetToken = null;
+      user.resetTokenExpiry = null;
+      await user.save();
+
+      logger.info(`Password reset for user: ${user.email}`, {
+        userId: user._id,
+      });
+
+      return { message: 'Password reset successfully' };
+    } catch (error) {
+      logger.error('Reset password error:', error);
       throw error;
     }
   }

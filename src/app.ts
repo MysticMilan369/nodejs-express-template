@@ -11,6 +11,9 @@ import { swaggerSetup, swaggerSpec } from '@/lib/swagger';
 import { logger } from './lib/logger';
 import { rateLimiter } from '@/middleware/rate-limiter.middleware';
 
+//Remove this if you want to handle authentication on frontend
+import { authUiRoutes } from './routes/auth-ui.routes';
+
 const app: express.Application = express();
 
 // Trust proxy (for rate limiting and logging)
@@ -26,6 +29,7 @@ app.use(
         styleSrc: ["'self'", "'unsafe-inline'"],
         scriptSrc: ["'self'"],
         imgSrc: ["'self'", 'data:', 'https:'],
+        connectSrc: ["'self'"], // Allow fetch requests to same origin
       },
     },
   }),
@@ -43,6 +47,9 @@ app.use(
 
 // Compression middleware
 app.use(compression());
+
+// Serve static files
+app.use(express.static('public'));
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -86,6 +93,9 @@ app.get('/', (req, res) => {
 
 // API Routes
 app.use('/api', routes);
+
+// remove this if you want to handle authentication on frontend
+app.use('/auth', authUiRoutes);
 
 // Handle 404 errors
 app.use('*', (req, res) => {

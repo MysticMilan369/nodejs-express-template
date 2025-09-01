@@ -39,6 +39,10 @@ const envSchema = z.object({
   BCRYPT_SALT_ROUNDS: z.string().transform(Number).default(12),
   PASSWORD_MIN_LENGTH: z.string().transform(Number).default(8),
   PASSWORD_RESET_EXPIRES: z.string().transform(Number).default(3600000), // 1 hour
+  EMAIL_VERIFICATION_EXPIRES: z.string().transform(Number).default(86400000), // 24 hours
+
+  //Frontend Url
+  FRONTEND_BASE_URL: z.string().default('http://localhost:3000'),
 
   // Admin Default User (for seeding)
   DEFAULT_ADMIN_NAME: z.string().default('Admin User'),

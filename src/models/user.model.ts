@@ -91,6 +91,22 @@ const UserSchema = new Schema<IUser>(
       default: false,
     },
     oauthProviders: [OAuthProviderSchema],
+    emailVerificationToken: {
+      type: String,
+      select: false,
+    },
+    emailVerificationExpiry: {
+      type: Date,
+      select: false,
+    },
+    resetToken: {
+      type: String,
+      select: false,
+    },
+    resetTokenExpiry: {
+      type: Date,
+      select: false,
+    },
     refreshTokens: [
       {
         token: {
@@ -146,16 +162,21 @@ UserSchema.pre('save', function (next) {
 
 // Instance methods
 UserSchema.methods.toPublicJSON = function () {
-  const user = this.toObject();
+  const user = this.toObject({ virtuals: true });
   delete user.passwordHash;
   delete user.refreshTokens;
+  delete user.emailVerificationToken;
+  delete user.emailVerificationExpiry;
+  delete user.resetToken;
+  delete user.resetTokenExpiry;
   delete user.__v;
-  if (user._id && typeof user._id !== 'string') {
-    user._id = user._id.toString();
+
+  // Convert _id to string for id field, then remove _id
+  if (user._id) {
+    user.id = user._id.toString();
+    delete user._id;
   }
-  if (user.id && typeof user.id !== 'string') {
-    user.id = user.id.toString();
-  }
+
   return user;
 };
 

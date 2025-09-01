@@ -45,6 +45,7 @@ export const config = {
     bcryptSaltRounds: env.BCRYPT_SALT_ROUNDS,
     passwordMinLength: env.PASSWORD_MIN_LENGTH,
     passwordResetExpires: env.PASSWORD_RESET_EXPIRES,
+    emailVerificationExpires: env.EMAIL_VERIFICATION_EXPIRES,
   },
 
   admin: {

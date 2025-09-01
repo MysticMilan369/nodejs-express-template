@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+const emailSchema = z.object({
+  email: z.string().email('Please provide a valid email address').toLowerCase(),
+});
 export class AuthValidators {
   static readonly register = z.object({
     name: z
@@ -78,9 +81,8 @@ export class AuthValidators {
     refreshToken: z.string().optional(),
   });
 
-  static readonly forgotPassword = z.object({
-    email: z.string().email('Please provide a valid email address').toLowerCase(),
-  });
+  static readonly forgotPassword = emailSchema;
+  static readonly resendVerification = emailSchema;
 
   static readonly resetPassword = z
     .object({
@@ -103,4 +105,8 @@ export class AuthValidators {
       message: "Password and confirmation don't match",
       path: ['confirmPassword'],
     });
+
+  static readonly verifyToken = z.object({
+    token: z.string().min(1, 'Verification token is required'),
+  });
 }

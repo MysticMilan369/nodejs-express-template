@@ -2,7 +2,6 @@ interface CreatedAtFilter {
   $gte?: Date;
   $lte?: Date;
 }
-import bcrypt from 'bcryptjs';
 import { User } from '@/models';
 import { IUser, IUserUpdate, IUserCreate, IUserPublic } from '@/models';
 import { AppError } from '@/lib/errors';
@@ -10,7 +9,7 @@ import { HTTP_STATUS_CODES } from '@/lib/constants';
 import { IPaginationQuery, IPaginatedResponse } from '@/types';
 import { PaginationService } from '@/lib/pagination';
 import { logger } from '@/lib/logger';
-import { config } from '@/config';
+import { hashPassword } from '@/utils/crypto.utils';
 
 export class UserService {
   static async getAllUsers(query: IPaginationQuery): Promise<IPaginatedResponse<IUserPublic>> {
@@ -348,8 +347,7 @@ export class UserService {
       }
 
       // Hash password
-      const saltRounds = parseInt(config.security.bcryptSaltRounds.toString());
-      const passwordHash = await bcrypt.hash(userData.password, saltRounds);
+      const passwordHash = await hashPassword(userData.password);
 
       // Create user
       const user = new User({
