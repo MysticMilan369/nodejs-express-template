@@ -45,7 +45,7 @@ export class AuthMiddleware {
         return;
       }
 
-      if (user.isBlocked) {
+      if (user.isBlocked()) {
         ApiResponse.error(res, 'Account is blocked', HTTP_STATUS_CODES.FORBIDDEN);
         return;
       }
@@ -81,7 +81,7 @@ export class AuthMiddleware {
         const decoded = JWTService.verifyAccessToken(token);
         const user = await User.findById(decoded.userId);
 
-        if (user && user.isActive && !user.isBlocked) {
+        if (user && user.isActive() && !user.isBlocked()) {
           req.user = {
             userId: decoded.userId,
             email: user.email,

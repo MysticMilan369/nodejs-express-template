@@ -2,7 +2,7 @@ interface CreatedAtFilter {
   $gte?: Date;
   $lte?: Date;
 }
-import { User } from '@/models';
+import { User, UserStatus } from '@/models';
 import { IUser, IUserUpdate, IUserCreate, IUserPublic } from '@/models';
 import { AppError } from '@/lib/errors';
 import { HTTP_STATUS_CODES } from '@/lib/constants';
@@ -221,7 +221,7 @@ export class UserService {
         throw new AppError('User is already deactivated', HTTP_STATUS_CODES.BAD_REQUEST);
       }
 
-      user.isActive = false;
+      user.status = UserStatus.INACTIVE;
       user.refreshTokens = []; // Clear all refresh tokens
       await user.save();
 
@@ -241,11 +241,11 @@ export class UserService {
         throw new AppError('User not found', HTTP_STATUS_CODES.NOT_FOUND);
       }
 
-      if (user.isActive) {
+      if (user.isActive()) {
         throw new AppError('User is already active', HTTP_STATUS_CODES.BAD_REQUEST);
       }
 
-      user.isActive = true;
+      user.status = UserStatus.ACTIVE;
       await user.save();
 
       logger.info(`User activated: ${user.email}`, { userId: user._id });
@@ -264,11 +264,11 @@ export class UserService {
         throw new AppError('User not found', HTTP_STATUS_CODES.NOT_FOUND);
       }
 
-      if (user.isBlocked) {
+      if (user.isBlocked()) {
         throw new AppError('User is already blocked', HTTP_STATUS_CODES.BAD_REQUEST);
       }
 
-      user.isBlocked = true;
+      user.status = UserStatus.BLOCKED;
       user.refreshTokens = []; // Clear all refresh tokens
       await user.save();
 
@@ -292,7 +292,7 @@ export class UserService {
         throw new AppError('User is not blocked', HTTP_STATUS_CODES.BAD_REQUEST);
       }
 
-      user.isBlocked = false;
+      user.status = UserStatus.ACTIVE;
       await user.save();
 
       logger.info(`User unblocked: ${user.email}`, { userId: user._id });
@@ -356,7 +356,7 @@ export class UserService {
         username: userData.username.toLowerCase(),
         passwordHash,
         emailVerified: userData.emailVerified || false,
-        isActive: userData.isActive !== undefined ? userData.isActive : true,
+        status: userData.status === UserStatus.ACTIVE ? UserStatus.ACTIVE : UserStatus.INACTIVE,
         onboardingCompleted: userData.onboardingCompleted || false,
       });
 
