@@ -1,4 +1,4 @@
-import { IResetPasswordRequest, User } from '@/models';
+import { IResetPasswordRequest, User, UserStatus } from '@/models';
 import {
   IUser,
   IUserCreate,
@@ -52,8 +52,8 @@ export class AuthService {
         email: userData.email.toLowerCase(),
         username: userData.username.toLowerCase(),
         passwordHash,
-        emailVerified: userData.emailVerified || false,
-        isActive: userData.isActive !== undefined ? userData.isActive : true,
+        emailVerified: false,
+        status: UserStatus.PENDING_VERIFICATION,
         onboardingCompleted: userData.onboardingCompleted || false,
         emailVerificationToken: hashedToken,
         emailVerificationExpiry: expiresAt,
@@ -98,7 +98,6 @@ export class AuthService {
     try {
       const { identifier, password } = loginData;
 
-      // Find user by email or username
       const user = await User.findOne({
         $or: [{ email: identifier.toLowerCase() }, { username: identifier.toLowerCase() }],
       });
@@ -107,37 +106,80 @@ export class AuthService {
         throw new AppError('Invalid credentials', HTTP_STATUS_CODES.UNAUTHORIZED);
       }
 
-      if (!user.emailVerified) {
-        throw new AppError('Email not verified', HTTP_STATUS_CODES.FORBIDDEN);
-      }
-
-      // Check if user is active
-      if (!user.isActive) {
+      // Check for deletion expiry first
+      if (user.isDeletionRequested() && user.isDeletionExpired()) {
         throw new AppError(
-          'Account is deactivated. Please contact support',
+          'Account deletion period has expired. Account cannot be recovered',
           HTTP_STATUS_CODES.FORBIDDEN,
         );
       }
 
-      // Check if user is blocked
-      if (user.isBlocked) {
-        throw new AppError(
-          'Account is blocked. Please contact support',
-          HTTP_STATUS_CODES.FORBIDDEN,
-        );
-      }
-
-      // Verify password
+      // Verify password first
       const isPasswordValid = await comparePassword(password, user.passwordHash);
       if (!isPasswordValid) {
         throw new AppError('Invalid credentials', HTTP_STATUS_CODES.UNAUTHORIZED);
+      }
+
+      // Handle deletion requested case - allow login within grace period
+      if (user.isDeletionRequested() && !user.isDeletionExpired()) {
+        user.reactivateAccount();
+        await user.save();
+
+        const tokens = await this.generateTokens(user);
+
+        logger.info(`User reactivated from deletion request: ${user.email}`, { userId: user._id });
+
+        return {
+          user: user.toPublicJSON() as IUserPublic,
+          tokens,
+          message:
+            'Welcome back! Your account deletion has been cancelled and your account is now active.',
+        };
+      }
+
+      // Handle inactive user login - auto-activate
+      if (user.status === UserStatus.INACTIVE) {
+        user.reactivateAccount();
+        await user.save();
+
+        const tokens = await this.generateTokens(user);
+
+        logger.info(`Inactive user reactivated: ${user.email}`, { userId: user._id });
+
+        return {
+          user: user.toPublicJSON() as IUserPublic,
+          tokens,
+          message: 'Welcome back! Your account has been reactivated.',
+        };
+      }
+
+      // Check if user can login normally
+      if (!user.canLogin()) {
+        // Provide specific error messages based on status
+        switch (user.status) {
+          case UserStatus.PENDING_VERIFICATION:
+            throw new AppError('Email not verified', HTTP_STATUS_CODES.FORBIDDEN);
+          case UserStatus.BLOCKED:
+            throw new AppError(
+              'Account is blocked. Please contact support',
+              HTTP_STATUS_CODES.FORBIDDEN,
+            );
+          case UserStatus.SUSPENDED:
+            throw new AppError(
+              'Account is suspended. Please contact support',
+              HTTP_STATUS_CODES.FORBIDDEN,
+            );
+          case UserStatus.DELETED:
+            throw new AppError('Account has been deleted', HTTP_STATUS_CODES.FORBIDDEN);
+          default:
+            throw new AppError('Account access denied', HTTP_STATUS_CODES.FORBIDDEN);
+        }
       }
 
       // Update last login
       user.lastLogin = new Date();
       await user.save();
 
-      // Generate tokens
       const tokens = await this.generateTokens(user);
 
       logger.info(`User logged in: ${user.email}`, { userId: user._id });

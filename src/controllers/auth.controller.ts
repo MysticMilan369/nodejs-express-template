@@ -65,7 +65,7 @@ export class AuthController {
    * @access  Public
    */
   static refreshToken = asyncHandler(async (req: Request, res: Response) => {
-    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+    const refreshToken = req.cookies.refreshToken;
 
     if (!refreshToken) {
       return ApiResponse.error(res, 'Refresh token not provided', HTTP_STATUS_CODES.UNAUTHORIZED);

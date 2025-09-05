@@ -1,5 +1,5 @@
 import { Schema, model } from 'mongoose';
-import { IUser, IRefreshToken } from './user.types';
+import { IRefreshToken, IUser, UserStatus } from './user.types';
 
 const OAuthProviderSchema = new Schema(
   {
@@ -42,7 +42,7 @@ const UserSchema = new Schema<IUser>(
       minlength: [3, 'Username must be at least 3 characters long'],
       maxlength: [30, 'Username cannot exceed 30 characters'],
       match: [/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'],
-      index: true, // Use this instead of separate index declaration
+      index: true,
     },
     email: {
       type: String,
@@ -54,7 +54,7 @@ const UserSchema = new Schema<IUser>(
         /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
         'Please provide a valid email address',
       ],
-      index: true, // Use this instead of separate index declaration
+      index: true,
     },
     passwordHash: {
       type: String,
@@ -70,18 +70,29 @@ const UserSchema = new Schema<IUser>(
       type: Boolean,
       default: false,
     },
-    isActive: {
-      type: Boolean,
-      default: true,
+
+    // Single source of truth for user status
+    status: {
+      type: String,
+      enum: Object.values(UserStatus),
+      default: UserStatus.PENDING_VERIFICATION,
+      index: true,
     },
-    isBlocked: {
-      type: Boolean,
-      default: false,
-    },
+
+    // Simplified deletion management - only need requested date
     deletionRequestedAt: {
       type: Date,
       default: null,
     },
+    deletionReason: {
+      type: String,
+      select: false, // Don't include by default
+    },
+    deactivationReason: {
+      type: String,
+      select: false, // Don't include by default
+    },
+
     lastLogin: {
       type: Date,
       default: null,
@@ -126,37 +137,142 @@ const UserSchema = new Schema<IUser>(
   },
   {
     timestamps: true,
-    versionKey: false, // Disable versioning completely
+    versionKey: false,
   },
 );
 
-// Indexes for better performance (only the ones not already defined in schema)
+// Indexes for better performance
 UserSchema.index({ role: 1 });
-UserSchema.index({ isActive: 1 });
 UserSchema.index({ emailVerified: 1 });
 UserSchema.index({ createdAt: -1 });
+UserSchema.index({ status: 1 });
+UserSchema.index({ deletionRequestedAt: 1 }); // For cleanup jobs
 
 // Virtual for id
 UserSchema.virtual('id').get(function () {
   return this._id.toHexString();
 });
 
-// Ensure virtual fields are serialized
+// Computed properties (virtual methods)
+UserSchema.methods.isActive = function (): boolean {
+  return this.status === UserStatus.ACTIVE;
+};
+
+UserSchema.methods.canLogin = function (): boolean {
+  // Users can login if they have deletion requested (within 30 days) to reactivate
+  if (this.status === UserStatus.DELETION_REQUESTED && !this.isDeletionExpired()) {
+    return this.emailVerified;
+  }
+
+  return [UserStatus.ACTIVE].includes(this.status) && this.emailVerified;
+};
+
+UserSchema.methods.isBlocked = function (): boolean {
+  return [UserStatus.BLOCKED, UserStatus.SUSPENDED].includes(this.status);
+};
+
+UserSchema.methods.isDeletionRequested = function (): boolean {
+  return this.status === UserStatus.DELETION_REQUESTED && this.deletionRequestedAt;
+};
+
+UserSchema.methods.isDeletionExpired = function (): boolean {
+  if (!this.deletionRequestedAt) return false;
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  return this.deletionRequestedAt <= thirtyDaysAgo;
+};
+
+UserSchema.methods.getDeletionExpiryDate = function (): Date | null {
+  if (!this.deletionRequestedAt) return null;
+
+  const expiryDate = new Date(this.deletionRequestedAt);
+  expiryDate.setDate(expiryDate.getDate() + 30);
+
+  return expiryDate;
+};
+
+// Status management methods
+UserSchema.methods.activate = function (): void {
+  this.status = UserStatus.ACTIVE;
+  this.deactivationReason = undefined;
+};
+
+UserSchema.methods.deactivate = function (reason?: string): void {
+  this.status = UserStatus.INACTIVE;
+  if (reason) {
+    this.deactivationReason = reason;
+  }
+};
+
+UserSchema.methods.block = function (reason?: string): void {
+  this.status = UserStatus.BLOCKED;
+  if (reason) {
+    this.deactivationReason = reason;
+  }
+  this.refreshTokens = [];
+};
+
+UserSchema.methods.unblock = function (): void {
+  this.status = UserStatus.ACTIVE;
+  this.deactivationReason = undefined;
+};
+
+UserSchema.methods.requestDeletion = function (reason?: string): void {
+  this.deletionRequestedAt = new Date();
+  if (reason) {
+    this.deletionReason = reason;
+  }
+
+  this.status = UserStatus.DELETION_REQUESTED;
+};
+
+UserSchema.methods.cancelDeletionRequest = function (): void {
+  this.deletionRequestedAt = null;
+  this.deletionReason = undefined;
+  this.status = UserStatus.ACTIVE;
+};
+
+UserSchema.methods.reactivateAccount = function (): void {
+  this.deletionRequestedAt = null;
+  this.deletionReason = undefined;
+  this.deactivationReason = undefined;
+  this.status = UserStatus.ACTIVE;
+  this.lastLogin = new Date();
+};
+
+// Enhanced toJSON transformation
 UserSchema.set('toJSON', {
   virtuals: true,
   transform: function (doc, ret) {
     delete (ret as unknown as Record<string, unknown>).passwordHash;
     delete (ret as unknown as Record<string, unknown>).refreshTokens;
     delete (ret as unknown as Record<string, unknown>).__v;
+    delete (ret as unknown as Record<string, unknown>).emailVerificationToken;
+    delete (ret as unknown as Record<string, unknown>).resetToken;
+    delete (ret as unknown as Record<string, unknown>).deletionReason;
+    delete (ret as unknown as Record<string, unknown>).deactivationReason;
     return ret;
   },
 });
 
-// Pre-save middleware to clean up expired refresh tokens
+// Pre-save middleware
 UserSchema.pre('save', function (next) {
+  // Clean up expired refresh tokens
   if (this.refreshTokens) {
     this.refreshTokens = this.refreshTokens.filter((token) => token.expiresAt > new Date());
   }
+
+  // Auto-update status based on email verification
+  if (
+    this.isModified('emailVerified') &&
+    this.emailVerified &&
+    this.status === UserStatus.PENDING_VERIFICATION
+  ) {
+    this.status = UserStatus.ACTIVE;
+  }
+
   next();
 });
 
@@ -169,20 +285,25 @@ UserSchema.methods.toPublicJSON = function () {
   delete user.emailVerificationExpiry;
   delete user.resetToken;
   delete user.resetTokenExpiry;
+  delete user.deletionReason;
+  delete user.deactivationReason;
   delete user.__v;
 
-  // Convert _id to string for id field, then remove _id
   if (user._id) {
     user.id = user._id.toString();
     delete user._id;
   }
 
+  // Add calculated deletion expiry date
+  user.deletionExpiryDate = this.getDeletionExpiryDate();
+
   return user;
 };
 
+// Existing refresh token methods remain the same
 UserSchema.methods.isValidRefreshToken = function (token: string) {
   return (
-    (this.refreshTokens as IRefreshToken[] | undefined)?.some(
+    this.refreshTokens?.some(
       (refreshToken: IRefreshToken) =>
         refreshToken.token === token && refreshToken.expiresAt > new Date(),
     ) || false
@@ -194,7 +315,6 @@ UserSchema.methods.addRefreshToken = function (token: string, expiresAt: Date) {
     this.refreshTokens = [];
   }
 
-  // Remove old tokens (keep only last 5)
   if (this.refreshTokens.length >= 5) {
     this.refreshTokens.shift();
   }

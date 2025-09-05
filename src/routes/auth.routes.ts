@@ -103,21 +103,12 @@ router.post(
  *   post:
  *     summary: Refresh access token
  *     tags: [Authentication]
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               refreshToken:
- *                 type: string
- *                 description: Refresh token (can also be sent as httpOnly cookie)
+ *     description: Refreshes access token using httpOnly cookie.
  *     responses:
  *       200:
  *         description: Token refreshed successfully
  *       401:
- *         description: Invalid or expired refresh token
+ *         description: Missing or invalid refresh token cookie
  */
 router.post('/refresh', rateLimiter.auth, AuthController.refreshToken);
 
