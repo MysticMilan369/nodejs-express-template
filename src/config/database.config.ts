@@ -1,7 +1,32 @@
 import mongoose from 'mongoose';
 import { config } from '@/config';
 
-const MONGODB_URI = config.database.uri || 'mongodb://localhost:27017/user_management_db';
+// Database configuration options type
+export interface DatabaseConfig {
+  uri: string;
+  options: mongoose.ConnectOptions;
+}
+
+/**
+ * Get the database configuration
+ * @returns Database configuration object
+ */
+export const getDatabaseConfig = (): DatabaseConfig => {
+  const uri = config.database.uri || 'mongodb://localhost:27017/user_management_db';
+
+  return {
+    uri,
+    options: {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 10000, // Increased timeout
+      socketTimeoutMS: 45000,
+      retryWrites: true,
+      w: 'majority',
+      // Add auth source if using authentication
+      ...(uri.includes('@') && { authSource: 'admin' }),
+    },
+  };
+};
 
 // Function to create database if it doesn't exist
 const ensureDatabaseExists = async (): Promise<void> => {
@@ -27,21 +52,13 @@ const ensureDatabaseExists = async (): Promise<void> => {
 
 export const connectDatabase = async (): Promise<void> => {
   try {
-    // MongoDB connection options
-    const options: mongoose.ConnectOptions = {
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 10000, // Increased timeout
-      socketTimeoutMS: 45000,
-      retryWrites: true,
-      w: 'majority',
-      // Add auth source if using authentication
-      ...(MONGODB_URI.includes('@') && { authSource: 'admin' }),
-    };
+    // Get database configuration
+    const dbConfig = getDatabaseConfig();
 
     console.log('Connecting to MongoDB...');
 
     // Connect to MongoDB
-    await mongoose.connect(MONGODB_URI, options);
+    await mongoose.connect(dbConfig.uri, dbConfig.options);
 
     console.log('MongoDB connected successfully');
     console.info(`Database: ${mongoose.connection.name}`);

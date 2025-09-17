@@ -76,7 +76,6 @@ const UserSchema = new Schema<IUser>(
       type: String,
       enum: Object.values(UserStatus),
       default: UserStatus.PENDING_VERIFICATION,
-      index: true,
     },
 
     // Simplified deletion management - only need requested date
